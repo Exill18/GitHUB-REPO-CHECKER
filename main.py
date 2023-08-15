@@ -4,28 +4,67 @@ import requests
 class GitHubStatusApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("GitHub Status App")
+        self.root.title("GitHub Repos Checker")
 
-        self.status_listbox = tk.Listbox(root, selectmode=tk.SINGLE)
-        self.status_listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        self.user_label = tk.Label(root, text="Enter GitHub username:")
+        self.user_label.pack(padx=10, pady=5)
 
-        self.get_status_button = tk.Button(root, text="Get Status", command=self.get_github_status)
+        self.user_entry = tk.Entry(root)
+        self.user_entry.pack(padx=10, pady=5)
+
+        self.get_status_button = tk.Button(root, text="Get Repos", command=self.get_user_repos)
         self.get_status_button.pack(pady=5)
 
-    def get_github_status(self):
+        self.repo_listbox = tk.Listbox(root)
+        self.repo_listbox.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+
+        self.profile_link_label = tk.Label(root, text="User Profile Link:")
+        self.profile_link_label.pack(padx=10, pady=5)
+
+        self.profile_link = tk.Label(root, text="", fg="blue", cursor="hand2")
+        self.profile_link.pack(padx=10, pady=5)
+        self.profile_link.bind("<Button-1>", self.open_user_profile)
+
+    def get_user_repos(self):
         try:
-            response = requests.get('https://www.githubstatus.com/api/v2/status.json')
-            data = response.json()
+            username = self.user_entry.get()
 
-            self.status_listbox.delete(0, tk.END)
+            # Fetch user data
+            user_response = requests.get(f'https://api.github.com/users/{username}')
+            if user_response.status_code != 200:
+                self.handle_error("Error fetching user data")
+                return
+            
+            user_data = user_response.json()
 
-            for component in data['components']:
-                status = component['status']
-                name = component['name']
-                self.status_listbox.insert(tk.END, f"{name} - {status}")
-        except requests.exceptions.RequestException as e:
-            self.status_listbox.delete(0, tk.END)
-            self.status_listbox.insert(tk.END, "Error fetching status")
+            self.repo_listbox.delete(0, tk.END)
+            self.profile_link.config(text="", cursor="")
+
+            repos_response = requests.get(f'https://api.github.com/users/{username}/repos')
+            if repos_response.status_code != 200:
+                self.handle_error("Error fetching user repositories")
+                return
+
+            repos_data = repos_response.json()
+
+            for repo in repos_data:
+                repo_name = repo.get('name', 'Unknown')
+                self.repo_listbox.insert(tk.END, repo_name)
+
+            self.profile_link.config(text=f"Profile Link: {user_data['html_url']}", cursor="hand2")
+        except requests.exceptions.RequestException:
+            self.handle_error("Network error fetching data")
+
+    def open_user_profile(self, event):
+        username = self.user_entry.get()
+        profile_url = f"https://github.com/{username}"
+        import webbrowser
+        webbrowser.open_new_tab(profile_url)
+    
+    def handle_error(self, message):
+        self.repo_listbox.delete(0, tk.END)
+        self.repo_listbox.insert(tk.END, message)
+        self.profile_link.config(text="", cursor="")
 
 if __name__ == "__main__":
     root = tk.Tk()
