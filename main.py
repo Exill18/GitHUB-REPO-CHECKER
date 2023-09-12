@@ -38,8 +38,10 @@ class GitHubStatusApp:
         try:
             username = self.user_entry.get()
 
+            headers = {'Authorization': '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'}
             # Fetch user data
-            user_response = requests.get(f'https://api.github.com/users/{username}')
+            user_response = requests.get(f'https://api.github.com/users/{username}', headers=headers)
+            
             if user_response.status_code != 200:
                 self.handle_error("Error fetching user data")
                 return
