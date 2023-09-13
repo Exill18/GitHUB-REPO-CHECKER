@@ -3,6 +3,7 @@ import requests
 import pytz
 from datetime import datetime
 import subprocess
+import webbrowser
 
 
 class GitHubStatusApp:
@@ -73,11 +74,11 @@ class GitHubStatusApp:
                     if commits_data:
                         last_commit_date = commits_data[0]['commit']['author']['date']
                         last_commit_date_utc = datetime.strptime(last_commit_date, '%Y-%m-%dT%H:%M:%SZ')
-                        portugal_time = pytz.timezone('Europe/Lisbon')
-                        last_commit_date_portugal = last_commit_date_utc.replace(tzinfo=pytz.utc).astimezone(portugal_time)
+                        Euro_time = pytz.timezone('Europe/Lisbon')
+                        last_commit_date = last_commit_date_utc.replace(tzinfo=pytz.utc).astimezone(Euro_time)
                         
-                        if not last_commit or last_commit_date_portugal > last_commit:
-                            last_commit = last_commit_date_portugal
+                        if not last_commit or last_commit_date > last_commit:
+                            last_commit = last_commit_date
 
             if last_commit:
                 last_commit_formatted = last_commit.strftime('%Y-%m-%d %H:%M:%S %Z')
@@ -103,7 +104,6 @@ class GitHubStatusApp:
     def open_user_profile(self, event):
         username = self.user_entry.get()
         profile_url = f"https://github.com/{username}"
-        import webbrowser
         webbrowser.open_new_tab(profile_url)
     
     def handle_error(self, message):
