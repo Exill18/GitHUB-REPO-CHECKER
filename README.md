@@ -1,4 +1,4 @@
-# GitHUB-STATUS
+# GitHUB-Repo Checker
 This project idea was taken from the the repository app-ideas by @florinpop17 (https://github.com/florinpop17/app-ideas).
 
 
