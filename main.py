@@ -89,10 +89,10 @@ class GitHubStatusApp:
         except requests.exceptions.RequestException:
             self.handle_error("Network error fetching data")
 
-        def clone_repo(self, event):
-            selected_repo = self.repo_listbox.get(self.repo_listbox.curselection())
-            username = self.user_entry.get()
-            repo_url = f"https://github.com/{username}/{selected_repo}.git"
+    def clone_repo(self, event):
+        selected_repo = self.repo_listbox.get(self.repo_listbox.curselection())
+        username = self.user_entry.get()
+        repo_url = f"https://github.com/{username}/{selected_repo}.git"
         try:
             subprocess.run(["git", "clone", repo_url], check=True)
             print(f"Repository {selected_repo} cloned successfully.")
