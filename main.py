@@ -2,6 +2,7 @@ import tkinter as tk
 import requests
 import pytz
 from datetime import datetime
+import subprocess
 
 
 class GitHubStatusApp:
@@ -33,6 +34,8 @@ class GitHubStatusApp:
         self.profile_link = tk.Label(root, text="", fg="blue", cursor="hand2")
         self.profile_link.pack(padx=10, pady=5)
         self.profile_link.bind("<Button-1>", self.open_user_profile)
+
+        self.repo_listbox.bind('<<ListboxSelect>>', self.clone_repo)
 
     def get_user_repos(self):
         try:
@@ -85,6 +88,16 @@ class GitHubStatusApp:
             self.profile_link.config(text=f"Profile Link: {user_data['html_url']}", cursor="hand2")
         except requests.exceptions.RequestException:
             self.handle_error("Network error fetching data")
+
+        def clone_repo(self, event):
+            selected_repo = self.repo_listbox.get(self.repo_listbox.curselection())
+            username = self.user_entry.get()
+            repo_url = f"https://github.com/{username}/{selected_repo}.git"
+        try:
+            subprocess.run(["git", "clone", repo_url], check=True)
+            print(f"Repository {selected_repo} cloned successfully.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error cloning repository {selected_repo}: {str(e)}")
 
 
     def open_user_profile(self, event):
