@@ -4,7 +4,7 @@ import pytz
 from datetime import datetime
 import subprocess
 import webbrowser
-
+import os
 
 class GitHubStatusApp:
     def __init__(self, root):
@@ -41,8 +41,9 @@ class GitHubStatusApp:
     def get_user_repos(self):
         try:
             username = self.user_entry.get()
+            api_key = os.getenv('GITHUB_API_KEY')
 
-            headers = {'Authorization': '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'}
+            headers = {'Authorization': f'token {api_key}'}
             # Fetch user data
             user_response = requests.get(f'https://api.github.com/users/{username}', headers=headers)
             
@@ -56,7 +57,7 @@ class GitHubStatusApp:
             self.last_commit_date.config(text="")
             self.profile_link.config(text="", cursor="hand2")
 
-            repos_response = requests.get(f'https://api.github.com/users/{username}/repos')
+            repos_response = requests.get(f'https://api.github.com/users/{username}/repos', headers=headers)
             if repos_response.status_code != 200:
                 self.handle_error("Error fetching user repositories")
                 return
@@ -68,7 +69,7 @@ class GitHubStatusApp:
                 repo_name = repo.get('name', 'Unknown')
                 self.repo_listbox.insert(tk.END, repo_name)
 
-                commits_response = requests.get(f'https://api.github.com/repos/{username}/{repo_name}/commits')
+                commits_response = requests.get(f'https://api.github.com/repos/{username}/{repo_name}/commits', headers=headers)
                 if commits_response.status_code == 200:
                     commits_data = commits_response.json()
                     if commits_data:
