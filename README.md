@@ -17,7 +17,7 @@ User Interface
 How to Set Up
   1. Create Your Personal Access Token (PAT):
   
-    <a href="https://github.com/settings/tokens?type=beta">Go to GitHub Settings Tokens.</a> 
+  <a href="https://github.com/settings/tokens?type=beta">Go to GitHub Settings Tokens.</a> 
     <br>
     Create a token with the necessary permissions, including access to public repositories.
 
