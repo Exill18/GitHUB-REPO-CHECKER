@@ -17,27 +17,29 @@ User Interface
 How to Set Up
   1. Create Your Personal Access Token (PAT):
   
-  <a href="https://github.com/settings/tokens?type=beta">Go to GitHub Settings Tokens.</a> <br>
-  Create a token with the necessary permissions, including access to public repositories.
+    <a href="https://github.com/settings/tokens?type=beta">Go to GitHub Settings Tokens.</a> 
+    <br>
+    Create a token with the necessary permissions, including access to public repositories.
 
 
   2. Create a .env File:
 
-  For security, store your PAT in a .env file (especially if you plan to place this on GitHub, even in a private repository).
-  Name your token variable GITHUB_PAT. For example:
-
-  <code class="!whitespace-pre hljs language-plaintext">GITHUB_PAT=your_personal_access_token_here</code>
+    For security, store your PAT in a .env file (especially if you plan to place this on GitHub, even in a private repository).
+    <br>
+    Name your token variable GITHUB_PAT. For example:
+    <br>
+    <code class="!whitespace-pre hljs language-plaintext">GITHUB_PAT=your_personal_access_token_here</code>
 
 
   3. Install Dependencies:
 
-  Install the necessary library to use the .env file:
-
-  <code class="!whitespace-pre hljs language-sh">pip install python-dotenv</code>
-
-  4. Run the Project:
-
-  You are now ready to run the project and check any public GitHub repositories and clone them as needed.
+    Install the necessary library to use the .env file:
+  
+    <code class="!whitespace-pre hljs language-sh">pip install python-dotenv</code>
+  
+    4. Run the Project:
+  
+    You are now ready to run the project and check any public GitHub repositories and clone them as needed.
 
 
 
