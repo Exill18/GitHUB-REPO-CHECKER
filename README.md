@@ -1,5 +1,5 @@
 GitHub Repo Checker
-This project was inspired by the repository app-ideas by @florinpop17.
+This project was inspired by the repository app-ideas by <a href="https://github.com/florinpop17/app-ideas">@florinpop17</a>.
 
 Overview
 Originally designed to check the status of GitHub (whether it's UP or DOWN), this project has evolved into a tool that allows you to enter a GitHub username and view the user's last commit date and profile link. Additionally, you can click on any repository listed, and it will be automatically cloned into the same folder where this program is located.
