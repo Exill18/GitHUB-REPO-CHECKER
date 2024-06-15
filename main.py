@@ -5,6 +5,10 @@ from datetime import datetime
 import subprocess
 import webbrowser
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class GitHubStatusApp:
     def __init__(self, root):
@@ -41,8 +45,8 @@ class GitHubStatusApp:
     def get_user_repos(self):
         try:
             username = self.user_entry.get()
-            api_key = os.getenv('GITHUB_API_KEY')
-
+            api_key = os.getenv('GITHUB_PAT')
+            
             headers = {'Authorization': f'token {api_key}'}
             # Fetch user data
             user_response = requests.get(f'https://api.github.com/users/{username}', headers=headers)
