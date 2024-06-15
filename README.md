@@ -1,7 +1,43 @@
-# GitHUB-Repo Checker
-This project idea was taken from the the repository app-ideas by @florinpop17 (https://github.com/florinpop17/app-ideas).
+GitHub Repo Checker
+This project was inspired by the repository app-ideas by @florinpop17.
+
+Overview
+Originally designed to check the status of GitHub (whether it's UP or DOWN), this project has evolved into a tool that allows you to enter a GitHub username and view the user's last commit date and profile link. Additionally, you can click on any repository listed, and it will be automatically cloned into the same folder where this program is located.
+
+Features
+Check Last Commit Date: Enter a GitHub username and get the date of their last commit.
+Profile Link: Provides a clickable link to the user's GitHub profile.
+Clone Repositories: Click on any repository listed, and it will be cloned automatically.
+
+User Interface
+
+![image](https://github.com/Exill18/GitHUB-REPO-CHECKER/assets/108736956/d7a464d3-e2df-4c9c-83fd-fb9cf9c8b590)
+
+
+How to Set Up
+  1. Create Your Personal Access Token (PAT):
+  
+  <a href="https://github.com/settings/tokens?type=beta">Go to GitHub Settings Tokens.</a>
+  Create a token with the necessary permissions, including access to public repositories.
+
+
+  2. Create a .env File:
+
+  For security, store your PAT in a .env file (especially if you plan to place this on GitHub, even in a private repository).
+  Name your token variable GITHUB_PAT. For example:
+
+  <code class="!whitespace-pre hljs language-plaintext">GITHUB_PAT=your_personal_access_token_here</code>
+
+
+  3. Install Dependencies:
+
+  Install the necessary library to use the .env file:
+
+  <code class="!whitespace-pre hljs language-sh">pip install python-dotenv</code>
+
+  4. Run the Project:
+
+  You are now ready to run the project and check any public GitHub repositories and clone them as needed.
 
 
 
-This project was originally made to check if github was UP or DOWN. After I finished the project, I had another idea and decided to change the project to a program that you can insert a username
-and check when was their last commit and the link to their profile. Also I add the function to click on the repo, and that repo is automatically clonned to the same folder you have this program.
