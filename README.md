@@ -22,7 +22,11 @@ Originally designed to check if GitHub was online, this project has evolved into
 
 ## 🖼️ User Interface
 
-![image](https://github.com/Exill18/GitHUB-REPO-CHECKER/assets/todo)
+### Light Mode
+![image](https://github.com/user-attachments/assets/bc8e4657-6457-43b5-ba45-327e1ac7d951)
+
+### Dark Mode
+![image](https://github.com/user-attachments/assets/1340160a-c919-4b9a-b9d7-d3b8d16fe8f7)
 
 Python Tkinter Theme Created by: [@rdbende](https://github.com/rdbende/Azure-ttk-theme/tree/main)
 
