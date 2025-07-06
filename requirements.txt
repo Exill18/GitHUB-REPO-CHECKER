@@ -1,0 +1,10 @@
+tkinter
+requests
+pytz
+python-dotenv
+logging
+webbrowser
+subprocess
+csv
+datetime
+threading
