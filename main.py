@@ -8,14 +8,17 @@ import webbrowser
 import subprocess
 import pytz
 import csv
+import shutil
+import json
 from datetime import datetime
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 
 # --- Setup ---
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
+CONFIG_FILE = ".env"
 
-class GitHubStatusApp:
+class GitHubRepoChecker:
     def __init__(self, root):
         self.root = root
         self.root.title("GitHub Repos Checker")
@@ -23,11 +26,15 @@ class GitHubStatusApp:
 
         self.repo_commit_cache = {}
         self.repo_flags = {}
+        self.profile_link_url = ""
 
+        self.progress = tk.DoubleVar()
+
+        # Theme loading
+        self.current_theme = os.getenv("UI_THEME", "light")
         try:
             self.root.tk.call("source", "azure.tcl")
-            self.root.tk.call("set_theme", "light")
-            self.current_theme = "light"
+            self.root.tk.call("set_theme", self.current_theme)
         except tk.TclError as e:
             print(f"Failed to load Azure theme: {e}")
             self.current_theme = None
@@ -49,10 +56,14 @@ class GitHubStatusApp:
         self.export_button = ttk.Button(top_frame, text="Export CSV", command=self.export_to_csv)
         self.export_button.pack(side=tk.LEFT, padx=5)
 
+        self.progress_bar = ttk.Progressbar(self.root, mode="indeterminate", variable=self.progress)
+        self.progress_bar.pack(fill=tk.X, padx=10, pady=(0, 5))
+        self.progress_bar.pack_forget()
+
         columns = ("stars", "forks", "lang", "desc")
         self.tree = ttk.Treeview(self.root, columns=columns, show="headings", selectmode="browse")
         self.tree.heading("stars", text="⭐ Stars")
-        self.tree.heading("forks", text="🍴 Forks")
+        self.tree.heading("forks", text="🍝 Forks")
         self.tree.heading("lang", text="Language")
         self.tree.heading("desc", text="Description")
         self.tree.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
@@ -62,7 +73,7 @@ class GitHubStatusApp:
         self.tree.column("lang", width=100, anchor="center")
         self.tree.column("desc", anchor="w")
 
-        self.tree.bind("<Double-1>", self.clone_repo)
+        self.tree.bind("<Double-1>", lambda e: self.threaded_clone_repo())
         self.tree.bind("<Button-3>", self.open_selected_repo_web)
 
         self.last_commit_label = ttk.Label(self.root, text="Last Commit: -")
@@ -84,100 +95,121 @@ class GitHubStatusApp:
 
     def toggle_theme(self):
         if self.current_theme == "light":
-            self.root.tk.call("set_theme", "dark")
             self.current_theme = "dark"
-        elif self.current_theme == "dark":
-            self.root.tk.call("set_theme", "light")
-            self.current_theme = "light"
         else:
+            self.current_theme = "light"
+
+        try:
+            self.root.tk.call("set_theme", self.current_theme)
+            set_key(CONFIG_FILE, "UI_THEME", self.current_theme)
+        except tk.TclError:
             messagebox.showerror("Theme Error", "Azure theme is not loaded.")
 
     def threaded_get_user_repos(self):
         threading.Thread(target=self.get_user_repos, daemon=True).start()
 
     def get_user_repos(self):
-        username = self.user_entry.get().strip()
-        if not username:
-            messagebox.showwarning("Input Required", "Please enter a GitHub username.")
-            return
-
-        token = os.getenv("GITHUB_PAT")
-        headers = {"Authorization": f"token {token}"} if token else {}
-
-        self.update_status("Fetching user data...")
-        try:
-            user_resp = requests.get(f"https://api.github.com/users/{username}", headers=headers)
-            if user_resp.status_code != 200:
-                self.update_status("User not found or error fetching profile.")
+            username = self.user_entry.get().strip()
+            if not username:
+                messagebox.showwarning("Input Required", "Please enter a GitHub username.")
                 return
 
-            user_data = user_resp.json()
-            self.profile_link.config(text=f"Profile: {user_data['html_url']}")
-            self.profile_link_url = user_data['html_url']
+            token = os.getenv("GITHUB_PAT")
+            headers = {"Authorization": f"token {token}"} if token else {}
 
-            self.tree.delete(*self.tree.get_children())
-            self.repo_commit_cache.clear()
-            self.repo_flags.clear()
-            last_commit = None
+            self.update_status("Fetching user data...")
+            self.progress_bar.pack(fill=tk.X, padx=10, pady=(0, 5))
+            self.progress_bar.start()
 
-            all_repos = []
-            for page in range(1, 4):
-                repo_resp = requests.get(
-                    f"https://api.github.com/users/{username}/repos?per_page=100&page={page}&sort=updated",
-                    headers=headers
-                )
-                if repo_resp.status_code != 200:
-                    break
-                page_data = repo_resp.json()
-                if not page_data:
-                    break
-                all_repos.extend(page_data)
+            try:
+                user_resp = requests.get(f"https://api.github.com/users/{username}", headers=headers)
+                if user_resp.status_code == 403:
+                    rate_remaining = user_resp.headers.get("X-RateLimit-Remaining")
+                    self.update_status("GitHub rate limit reached.")
+                    return
+                elif user_resp.status_code != 200:
+                    logging.error(f"User fetch failed: {user_resp.status_code}, {user_resp.text}")
+                    self.update_status("User not found or error fetching profile.")
+                    return
 
-            for repo in all_repos:
-                name = repo["name"]
-                stars = repo.get("stargazers_count", 0)
-                forks = repo.get("forks_count", 0)
-                lang = repo.get("language", "") or "-"
-                desc = repo.get("description", "") or "-"
+                user_data = user_resp.json()
+                self.profile_link.config(text=f"Profile: {user_data['html_url']}")
+                self.profile_link_url = user_data['html_url']
 
-                # Check if repo can be cloned
-                clone_url = f"https://github.com/{username}/{name}.git"
-                try:
-                    result = subprocess.run(["git", "ls-remote", clone_url], capture_output=True, text=True)
-                    if result.returncode != 0 or not result.stdout.strip():
-                        flagged_name = f"❌ {name}"
-                        self.repo_flags[flagged_name] = name
+                self.tree.delete(*self.tree.get_children())
+                self.repo_commit_cache.clear()
+                self.repo_flags.clear()
+                last_commit = None
+
+                all_repos = []
+                page = 1
+                while True:
+                    repo_resp = requests.get(
+                        f"https://api.github.com/users/{username}/repos?per_page=100&page={page}&sort=updated",
+                        headers=headers
+                    )
+                    if repo_resp.status_code == 403:
+                        self.update_status("Rate limit reached while fetching repos.")
+                        return
+                    if repo_resp.status_code != 200:
+                        logging.error(f"Repo fetch failed: {repo_resp.status_code}, {repo_resp.text}")
+                        break
+                    page_data = repo_resp.json()
+                    if not page_data:
+                        break
+                    all_repos.extend(page_data)
+                    page += 1
+
+                for repo in all_repos:
+                    name = repo["name"]
+                    stars = repo.get("stargazers_count", 0)
+                    forks = repo.get("forks_count", 0)
+                    lang = repo.get("language", "") or "-"
+                    desc = repo.get("description", "") or "-"
+
+                    clone_url = f"https://github.com/{username}/{name}.git"
+                    if shutil.which("git") is None:
+                        flagged_name = f"⛔ {name}"
                     else:
-                        flagged_name = name
-                except Exception:
-                    flagged_name = f"❌ {name}"
-                    self.repo_flags[flagged_name] = name
+                        try:
+                            result = subprocess.run(["git", "ls-remote", clone_url], capture_output=True, text=True)
+                            if result.returncode != 0 or not result.stdout.strip():
+                                flagged_name = f"❌ {name}"
+                                self.repo_flags[flagged_name] = name
+                            else:
+                                flagged_name = name
+                        except Exception:
+                            flagged_name = f"❌ {name}"
+                            self.repo_flags[flagged_name] = name
 
-                self.tree.insert("", "end", iid=flagged_name, values=(stars, forks, lang, desc))
+                    self.tree.insert("", "end", iid=flagged_name, values=(stars, forks, lang, desc))
 
-                if 'pushed_at' in repo:
-                    pushed = datetime.strptime(repo['pushed_at'], '%Y-%m-%dT%H:%M:%SZ')
-                    lisbon_time = pytz.timezone("Europe/Lisbon")
-                    pushed_local = pushed.replace(tzinfo=pytz.utc).astimezone(lisbon_time)
-                    self.repo_commit_cache[flagged_name] = pushed_local
-                    if not last_commit or pushed_local > last_commit:
-                        last_commit = pushed_local
+                    if 'pushed_at' in repo:
+                        pushed = datetime.strptime(repo['pushed_at'], '%Y-%m-%dT%H:%M:%SZ')
+                        lisbon_time = pytz.timezone("Europe/Lisbon")
+                        pushed_local = pushed.replace(tzinfo=pytz.utc).astimezone(lisbon_time)
+                        self.repo_commit_cache[flagged_name] = pushed_local
+                        if not last_commit or pushed_local > last_commit:
+                            last_commit = pushed_local
 
-            if last_commit:
-                self.last_commit_label.config(text=f"Last Commit: {last_commit.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            else:
-                self.last_commit_label.config(text="Last Commit: None found")
+                if last_commit:
+                    self.last_commit_label.config(text=f"Last Commit: {last_commit.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                else:
+                    self.last_commit_label.config(text="Last Commit: None found")
 
-            self.update_status(f"Loaded {len(all_repos)} repositories.")
-        except Exception as e:
-            logging.error("Error fetching repos", exc_info=True)
-            self.update_status("Network or API error occurred.")
+                self.update_status(f"Loaded {len(all_repos)} repositories.")
+            except Exception as e:
+                logging.error("Error fetching repos", exc_info=True)
+                self.update_status("Network or API error occurred.")
+            finally:
+                self.progress_bar.stop()
+                self.progress_bar.pack_forget()
 
     def update_status(self, message):
         self.status_label.config(text=message)
 
     def open_user_profile(self, event):
-        if hasattr(self, 'profile_link_url'):
+        if self.profile_link_url:
             webbrowser.open_new_tab(self.profile_link_url)
 
     def open_selected_repo_web(self, event):
@@ -204,7 +236,10 @@ class GitHubStatusApp:
         self.root.clipboard_append(url)
         self.update_status(f"Copied to clipboard: {url}")
 
-    def clone_repo(self, event):
+    def threaded_clone_repo(self):
+        threading.Thread(target=self.clone_repo, daemon=True).start()
+
+    def clone_repo(self):
         selected = self.tree.selection()
         if not selected:
             return
@@ -213,32 +248,34 @@ class GitHubStatusApp:
         username = self.user_entry.get().strip()
         repo_url = f"https://github.com/{username}/{original_name}.git"
 
+        if shutil.which("git") is None:
+            messagebox.showerror("Git Not Found", "Git is not installed or not in PATH.")
+            return
+
         folder = filedialog.askdirectory(title="Choose folder to clone into")
         if not folder:
             return
 
+        self.progress_bar.start()
         clone_path = os.path.join(folder, original_name)
         try:
-            result = subprocess.run(
-                ["git", "clone", repo_url, clone_path],
-                capture_output=True,
-                text=True,
-                check=True
-            )
+            result = subprocess.run([
+                "git", "clone", repo_url, clone_path
+            ], capture_output=True, text=True, check=True)
             messagebox.showinfo("Success", f"Repository '{original_name}' cloned to {folder}")
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.lower()
-            if "repository not found" in stderr or "could not read from remote repository" in stderr or "does not appear to be a git repository" in stderr:
-                msg = (
-                    f"The repository '{original_name}' appears to be removed, DMCA'd, or otherwise unavailable for cloning.\n\n"
-                    "Learn more: https://docs.github.com/en/github/site-policy/dmca-takedown-policy"
-                )
+            logging.error("Git clone failed", exc_info=True)
+            if "repository not found" in stderr or "could not read from remote" in stderr:
+                msg = (f"The repository '{original_name}' appears to be removed, DMCA'd, or unavailable.\n\n"
+                       "Learn more: https://docs.github.com/en/github/site-policy/dmca-takedown-policy")
                 messagebox.showerror("Clone Failed", msg)
             elif e.returncode == 128:
                 messagebox.showerror("Clone Failed", f"Git error 128: Repository might be inaccessible or empty.\n\nDetails:\n{stderr}")
             else:
                 messagebox.showerror("Clone Failed", f"An error occurred while cloning:\n\n{stderr}")
-            logging.error("Git clone failed", exc_info=True)
+        finally:
+            self.progress_bar.stop()
 
     def export_to_csv(self):
         if not self.tree.get_children():
@@ -263,5 +300,5 @@ class GitHubStatusApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = GitHubStatusApp(root)
+    app = GitHubRepoChecker(root)
     root.mainloop()
