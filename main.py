@@ -16,6 +16,7 @@ from dotenv import load_dotenv, set_key
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 CONFIG_FILE = ".env"
+GITHUB_STATUS_URL = "https://www.githubstatus.com/api/v2/status.json"
 
 class GitHubRepoChecker:
     def __init__(self, root):
@@ -64,21 +65,11 @@ class GitHubRepoChecker:
 
         columns = ("stars", "forks", "lang", "desc")
         self.tree = ttk.Treeview(self.root, columns=columns, show="headings", selectmode="browse")
-        self.tree.heading("stars", text="⭐ Stars")
-        self.tree.heading("forks", text="🍴 Forks")
-        self.tree.heading("lang", text="Language")
-        self.tree.heading("desc", text="Description")
-        self.tree.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
-
-        self.tree.column("stars", width=60, anchor="center")
-        self.tree.column("forks", width=60, anchor="center")
-        self.tree.column("lang", width=100, anchor="center")
-        self.tree.column("desc", anchor="w")
-
-        self.sort_state = {"column": None, "descending": False}
         for col in columns:
-            self.tree.heading(col, text=self.tree.heading(col)["text"],
-                              command=lambda _col=col: self.sort_treeview_column(_col))
+            self.tree.heading(col, text=col.title(), command=lambda _col=col: self.sort_treeview_column(_col))
+            self.tree.column(col, anchor="center")
+
+        self.tree.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
 
         self.tree.bind("<Double-1>", lambda e: self.threaded_clone_repo())
         self.tree.bind("<Button-3>", self.open_selected_repo_web)
@@ -116,11 +107,28 @@ class GitHubRepoChecker:
     def threaded_get_user_repos(self):
         threading.Thread(target=self.get_user_repos, daemon=True).start()
 
+    def check_github_status(self):
+        try:
+            resp = requests.get(GITHUB_STATUS_URL, timeout=5)
+            if resp.status_code == 200:
+                status_data = resp.json()
+                status = status_data.get("status", {}).get("description", "unknown")
+                indicator = status_data.get("status", {}).get("indicator", "none")
+                if indicator != "none":
+                    messagebox.showwarning("GitHub Status", f"⚠ GitHub is currently experiencing issues: {status}")
+                    return False
+        except Exception as e:
+            logging.warning("Could not verify GitHub status.")
+        return True
+
     def get_user_repos(self):
         username = self.user_entry.get().strip()
         if not username:
             messagebox.showwarning("Input Required", "Please enter a GitHub username.")
             return
+
+        if not self.check_github_status():
+            self.update_status("GitHub is experiencing issues.")
 
         token = os.getenv("GITHUB_PAT")
         headers = {"Authorization": f"token {token}"} if token else {}
@@ -135,20 +143,33 @@ class GitHubRepoChecker:
                 reset_time_unix = user_resp.headers.get("X-RateLimit-Reset")
                 rate_remaining = user_resp.headers.get("X-RateLimit-Remaining")
                 rate_limit = user_resp.headers.get("X-RateLimit-Limit")
-                if reset_time_unix:
-                    reset_dt = datetime.fromtimestamp(int(reset_time_unix)).astimezone()
-                    reset_str = reset_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
-                else:
-                    reset_str = "unknown"
+                reset_dt = datetime.fromtimestamp(int(reset_time_unix)).astimezone() if reset_time_unix else "unknown"
+                reset_str = reset_dt.strftime("%Y-%m-%d %H:%M:%S %Z") if reset_time_unix else "unknown"
                 message = (f"GitHub API rate limit reached.\n"
                            f"Limit: {rate_limit}, Remaining: {rate_remaining}\n"
                            f"Resets at: {reset_str}")
                 self.update_status(message)
                 messagebox.showwarning("Rate Limit", message)
                 return
+            elif user_resp.status_code == 401:
+                self.update_status("Unauthorized. Check your GitHub token.")
+                messagebox.showerror("401 Unauthorized", "Invalid or missing GitHub token.")
+                return
+            elif user_resp.status_code == 404:
+                self.update_status("User not found.")
+                messagebox.showerror("404 Not Found", f"GitHub user '{username}' not found.")
+                return
+            elif user_resp.status_code >= 500:
+                self.update_status("GitHub server error.")
+                messagebox.showerror("Server Error", f"GitHub is currently experiencing issues. Code: {user_resp.status_code}")
+                return
             elif user_resp.status_code != 200:
-                logging.error(f"User fetch failed: {user_resp.status_code}, {user_resp.text}")
-                self.update_status("User not found or error fetching profile.")
+                try:
+                    err_msg = user_resp.json().get("message", "Unexpected error")
+                except:
+                    err_msg = user_resp.text
+                self.update_status("Error fetching user profile.")
+                messagebox.showerror("GitHub Error", f"{user_resp.status_code}: {err_msg}")
                 return
 
             user_data = user_resp.json()
@@ -169,9 +190,18 @@ class GitHubRepoChecker:
                 if repo_resp.status_code == 403:
                     self.update_status("Rate limit reached while fetching repos.")
                     return
+                if repo_resp.status_code >= 500:
+                    self.update_status("GitHub server error while fetching repos.")
+                    messagebox.showerror("Server Error", f"GitHub returned {repo_resp.status_code}.")
+                    return
                 if repo_resp.status_code != 200:
-                    logging.error(f"Repo fetch failed: {repo_resp.status_code}, {repo_resp.text}")
-                    break
+                    try:
+                        err_msg = repo_resp.json().get("message", "Error fetching repos.")
+                    except:
+                        err_msg = repo_resp.text
+                    logging.error(f"Repo fetch failed: {repo_resp.status_code}, {err_msg}")
+                    self.update_status("Error fetching repositories.")
+                    return
                 page_data = repo_resp.json()
                 if not page_data:
                     break
@@ -191,15 +221,13 @@ class GitHubRepoChecker:
                     if not last_commit or pushed_local > last_commit:
                         last_commit = pushed_local
 
-            if last_commit:
-                self.last_commit_label.config(text=f"Last Commit: {last_commit.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            else:
-                self.last_commit_label.config(text="Last Commit: None found")
-
+            self.last_commit_label.config(
+                text=f"Last Commit: {last_commit.strftime('%Y-%m-%d %H:%M:%S %Z')}" if last_commit else "Last Commit: None found")
             self.update_status(f"Loaded {len(all_repos)} repositories.")
-        except Exception as e:
-            logging.error("Error fetching repos", exc_info=True)
-            self.update_status("Network or API error occurred.")
+        except requests.exceptions.RequestException as e:
+            logging.error("Request failed", exc_info=True)
+            self.update_status("Network error occurred.")
+            messagebox.showerror("Network Error", str(e))
         finally:
             self.progress_bar.stop()
             self.progress_bar.pack_forget()
