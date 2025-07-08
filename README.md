@@ -12,7 +12,6 @@ Originally designed to check if GitHub was online, this project has evolved into
 - 📦 **Clone Repositories**: Double-click any repository to clone it to a selected folder.
 - 📊 **Enhanced Repo Info**: Shows stars ⭐, forks 🍴, language, and description in a sortable tree view.
 - ❌ **DMCA/Unavailable Repo Detection**: Flags repositories that are inaccessible, deleted, or empty.
-- 🧠 **Smart Error Detection**: Interprets Git errors (e.g., error 128) and alerts the user with a clear explanation and a link to [GitHub’s DMCA Policy](https://docs.github.com/en/github/site-policy/dmca-takedown-policy).
 - 💾 **Export to CSV**: Export the entire repo list to a CSV file.
 - 🌗 **Dark/Light Mode Toggle**: Using the Azure theme for a modern UI experience.
 - 🔁 **Keyboard Shortcuts**:
