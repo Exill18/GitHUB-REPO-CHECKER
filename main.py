@@ -63,7 +63,7 @@ class GitHubRepoChecker:
         columns = ("stars", "forks", "lang", "desc")
         self.tree = ttk.Treeview(self.root, columns=columns, show="headings", selectmode="browse")
         self.tree.heading("stars", text="⭐ Stars")
-        self.tree.heading("forks", text="🍝 Forks")
+        self.tree.heading("forks", text="🍴 Forks")
         self.tree.heading("lang", text="Language")
         self.tree.heading("desc", text="Description")
         self.tree.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
