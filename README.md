@@ -23,10 +23,10 @@ Originally designed to check if GitHub was online, this project has evolved into
 ## 🖼️ User Interface
 
 ### Light Mode
-![image](https://github.com/user-attachments/assets/bc8e4657-6457-43b5-ba45-327e1ac7d951)
+![image](https://github.com/user-attachments/assets/c26e761e-7982-489d-b87e-1fe8176adb3f)
 
 ### Dark Mode
-![image](https://github.com/user-attachments/assets/1340160a-c919-4b9a-b9d7-d3b8d16fe8f7)
+![image](https://github.com/user-attachments/assets/79e5d3ee-d3ac-4f78-83a9-a1e106450b19)
 
 Python Tkinter Theme Created by: [@rdbende](https://github.com/rdbende/Azure-ttk-theme/tree/main)
 
