@@ -3,21 +3,22 @@
 This project was inspired by the repository app-ideas by [@florinpop17](https://github.com/florinpop17/app-ideas).
 
 ## 🧠 Overview
-Originally designed to check if GitHub was online, this project has evolved into a desktop application for analyzing and managing GitHub repositories. It uses the GitHub API and `git` to list, inspect, and clone repositories for any user.
+Originally designed to check if GitHub was online, this project has evolved into a responsive desktop application for analyzing and managing GitHub repositories. It uses the GitHub API and `GitPython` to list, inspect, and clone repositories for any user, with a focus on handling large accounts efficiently.
 
 ## ✨ Features
 
-- 🔍 **Check Last Commit Date**: Displays the most recent commit across all of a user's repositories.
+- 🚀 **Progressive Loading**: Repositories are streamed in page by page, making the application instantly responsive even for users with thousands of repositories.
+- 👤 **User Avatar**: Fetches and displays the GitHub user's profile picture.
+- 🔎 **Real-time Search**: Instantly filter the repository list as you type.
+- 📊 **Enhanced Repo Info**: Shows name, stars ⭐, forks 🍴, language, and description in a sortable tree view.
 - 🔗 **Profile Link**: Clickable URL to the GitHub user’s profile.
-- 📦 **Clone Repositories**: Double-click any repository to clone it to a selected folder.
-- 📊 **Enhanced Repo Info**: Shows stars ⭐, forks 🍴, language, and description in a sortable tree view.
-- ❌ **DMCA/Unavailable Repo Detection**: Flags repositories that are inaccessible, deleted, or empty.
-- 💾 **Export to CSV**: Export the entire repo list to a CSV file.
-- 🌗 **Dark/Light Mode Toggle**: Using the Azure theme for a modern UI experience.
+- 📦 **Clone with GitPython**: Double-click any repository to clone it to a selected folder using the robust `GitPython` library.
+- 💾 **Export to CSV**: Export the entire filtered list of repositories to a CSV file.
+- 🌗 **Dark/Light Mode Toggle**: Uses the Azure-ttk-theme for a modern UI experience.
 - 🔁 **Keyboard Shortcuts**:
   - `Enter` = Fetch Repos
   - `Ctrl+C` = Copy selected repo’s clone URL
-- 🖱️ **Right-Click Menu**: Open the selected repository in your browser with a single click.
+- 🖱️ **Right-Click Menu**: Quickly open a repository in your browser, copy its clone URL, or initiate a clone.
 
 ## 🖼️ User Interface
 
@@ -32,50 +33,50 @@ Python Tkinter Theme Created by: [@rdbende](https://github.com/rdbende/Azure-ttk
 
 ## ⚙️ How to Set Up
 
-1. **Create Your Personal Access Token (PAT)**:
-   - [GitHub Settings Tokens](https://github.com/settings/tokens?type=beta)
-   - Create a token with access to public repositories.
+1.  **Create Your Personal Access Token (PAT)**:
+    - Go to [GitHub Settings Tokens](https://github.com/settings/tokens?type=beta).
+    - Create a token with `public_repo` access. This provides a much higher API rate limit.
 
-2. **Create a `.env` File**:
-   - Store your PAT securely:
-   ```env
-   GITHUB_PAT=your_personal_access_token_here
-   ```
+2.  **Create a `.env` File**:
+    - In the project's root directory, create a file named `.env`.
+    - Store your PAT securely in this file:
+      ```env
+      GITHUB_PAT=your_personal_access_token_here
+      ```
 
-3. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+3.  **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-4. **Run the Project**:
-   ```bash
-   python main.py
-   ```
+4.  **Run the Project**:
+    ```bash
+    python main.py
+    ```
 
 ## 📁 Project Structure 
 ```
 GitHUB-REPO-CHECKER/
-├── main.py              # Main GUI logic
+├── main.py              # Main application logic and UI
+├── github_api.py        # Handles all communication with the GitHub API
 ├── azure.tcl            # Azure theme file
-├── themes/          # Azure dark and light themes with respective icons
-      ├── light.tcl            # Azure light theme file
-      ├── dark.tcl             # Azure dark theme file
-├── .env                 # Your GitHub PAT
-├── README.md
+├── themes/              # Azure dark and light theme assets
+│   ├── light.tcl
+│   └── dark.tcl
+├── .env                 # Stores your GitHub PAT (must be created by you)
+├── requirements.txt     # Lists all project dependencies
+└── README.md
 ```
 
 ## 🧩 Dependencies
-- `tkinter`
-- `requests`
-- `pytz`
-- `python-dotenv`
-- `logging`
-- `webbrowser`
-- `subprocess`
-- `csv`
-- `datetime`
-- `threading`
-- `git` must be installed and available in PATH
+The project's dependencies are listed in the `requirements.txt` file.
+
+- `requests` for making HTTP requests to the GitHub API.
+- `python-dotenv` for managing environment variables (like your PAT).
+- `pytz` for handling timezones for commit dates.
+- `Pillow` for processing and displaying the user avatar.
+- `GitPython` for a robust, object-oriented interface to your local Git repositories.
+- `git` command-line tool must be installed and available in your system's PATH.
 
 ---
 
