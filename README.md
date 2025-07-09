@@ -12,7 +12,7 @@ Originally designed to check if GitHub was online, this project has evolved into
 - 🔎 **Real-time Search**: Instantly filter the repository list as you type.
 - 📊 **Enhanced Repo Info**: Shows name, stars ⭐, forks 🍴, language, and description in a sortable tree view.
 - 🔗 **Profile Link**: Clickable URL to the GitHub user’s profile.
-- 📦 **Clone with GitPython**: Double-click any repository to clone it to a selected folder using the robust `GitPython` library.
+- 📦 **Clone with GitPython**: Double-click any repository to clone it to a selected folder using the `GitPython` library.
 - 💾 **Export to CSV**: Export the entire filtered list of repositories to a CSV file.
 - 🌗 **Dark/Light Mode Toggle**: Uses the Azure-ttk-theme for a modern UI experience.
 - 🔁 **Keyboard Shortcuts**:
