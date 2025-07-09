@@ -13,6 +13,7 @@ import io
 import urllib.request
 import git
 from queue import Queue, Empty
+from itertools import count, cycle
 
 # Local application import
 from github_api import GitHubAPI
@@ -22,9 +23,69 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 CONFIG_FILE = ".env"
 
+class SplashScreen:
+    """
+    A splash screen window that displays an animated GIF while the main app loads.
+    """
+    def __init__(self, parent):
+        self.root = parent
+        # Create a Toplevel window, which is a separate, top-level window.
+        self.window = tk.Toplevel(parent)
+        self.window.overrideredirect(True) # Make it borderless.
+
+        # Load the GIF and handle potential errors if the file is missing.
+        try:
+            self.gif_path = "loading.gif"
+            self.gif_info = Image.open(self.gif_path)
+            self.frames = self.get_frames(self.gif_info)
+            self.frame_iterator = cycle(self.frames)
+        except FileNotFoundError:
+            print("Error: loading.gif not found. Skipping splash screen.")
+            self.frames = None # Signal that the GIF is missing.
+            self.close()
+            return
+
+        # Center the splash screen on the monitor.
+        width, height = self.gif_info.size
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        self.window.geometry(f'{width}x{height}+{x}+{y}')
+
+        self.label = ttk.Label(self.window)
+        self.label.pack()
+
+        # Start the animation loop.
+        self.animate()
+
+    def get_frames(self, image):
+        """Extracts all frames from an animated GIF."""
+        frame_list = []
+        for i in count(1):
+            try:
+                image.seek(i)
+                frame_list.append(ImageTk.PhotoImage(image.copy()))
+            except EOFError:
+                break
+        return frame_list
+
+    def animate(self):
+        """Updates the label with the next frame of the GIF."""
+        if not self.frames: return
+
+        current_frame = next(self.frame_iterator)
+        self.label.configure(image=current_frame)
+        # The delay is read from the GIF's metadata, defaulting to 100ms.
+        self.root.after(self.gif_info.info.get('duration', 100), self.animate)
+
+    def close(self):
+        """Destroys the splash screen window."""
+        self.window.destroy()
+
 class GitHubRepoChecker:
     """
-    A desktop application to browse and manage GitHub repositories.
+    The main application window for browsing and managing GitHub repositories.
     """
     def __init__(self, root):
         self.root = root
@@ -32,10 +93,8 @@ class GitHubRepoChecker:
         self.root.geometry("950x700")
 
         self.api = GitHubAPI()
-        # The queue is essential for passing data safely from the background network thread to the main UI thread.
         self.repo_queue = Queue()
 
-        # These lists hold the repository data.
         self.all_repos = []
         self.filtered_repos = []
         
@@ -44,7 +103,6 @@ class GitHubRepoChecker:
 
         self.current_theme = os.getenv("UI_THEME", "light")
         try:
-            # This custom theme gives the app its modern look.
             self.root.tk.call("source", "azure.tcl")
             self.root.tk.call("set_theme", self.current_theme)
         except tk.TclError:
@@ -56,7 +114,6 @@ class GitHubRepoChecker:
         
         self.create_widgets()
         self.bind_shortcuts()
-        # This loop periodically checks the queue for new data to update the UI.
         self.process_repo_queue()
 
     def create_widgets(self):
@@ -94,7 +151,7 @@ class GitHubRepoChecker:
         # --- Progress Bar ---
         self.progress_bar = ttk.Progressbar(self.root, mode="indeterminate")
         self.progress_bar.pack(fill=tk.X, padx=10, pady=(0, 5))
-        self.progress_bar.pack_forget() # Hidden by default
+        self.progress_bar.pack_forget()
 
         # --- Treeview for Displaying Repositories ---
         columns = ("name", "stars", "forks", "lang", "desc")
@@ -112,7 +169,7 @@ class GitHubRepoChecker:
         self.tree.heading("lang", text="Language", command=lambda: self.sort_by_column("language"))
         self.tree.column("lang", width=120, anchor="w", stretch=False)
         
-        self.tree.heading("desc", text="Description") # No sort for description
+        self.tree.heading("desc", text="Description")
         self.tree.column("desc", width=400)
 
         self.tree.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
@@ -149,7 +206,6 @@ class GitHubRepoChecker:
 
     def start_repo_fetch(self, event=None):
         """Clears old data and starts the background thread for fetching."""
-        # Reset the application state before a new fetch.
         self.all_repos.clear()
         self.filtered_repos.clear()
         self.tree.delete(*self.tree.get_children())
@@ -158,7 +214,6 @@ class GitHubRepoChecker:
         self.profile_link_url = ""
         self.avatar_label.config(image=None)
         
-        # Empty the queue of any old messages.
         while not self.repo_queue.empty():
             try: self.repo_queue.get_nowait()
             except Empty: break
@@ -167,16 +222,13 @@ class GitHubRepoChecker:
 
     def fetch_repos_worker(self):
         """
-        This function runs in a background thread.
-        It fetches all data and puts it into a queue for the UI to process.
+        Runs in a background thread to fetch data without freezing the UI.
         """
         username = self.user_entry.get().strip()
         if not username:
-            # We can show a messagebox directly from a thread if it's a simple warning.
             messagebox.showwarning("Input Required", "Please enter a GitHub username.")
             return
 
-        # Put messages in the queue for the UI thread to handle.
         self.repo_queue.put(("status", "Checking GitHub status..."))
         self.repo_queue.put(("progress", "start"))
 
@@ -194,23 +246,19 @@ class GitHubRepoChecker:
         self.repo_queue.put(("profile", user_result["data"]))
         
         self.repo_queue.put(("status", f"Streaming repositories for '{username}'..."))
-        # This loop gets one page at a time from the API.
         for page_result in self.api.stream_user_repos(username):
             if not page_result["success"]:
                 self.repo_queue.put(("error", page_result))
                 return
-            # Put the new page of repos into the queue.
             self.repo_queue.put(("repos", page_result["data"]))
         
         self.repo_queue.put(("done", None))
 
     def process_repo_queue(self):
         """
-        Checks the queue for messages from the worker thread and updates the UI.
-        This is the only place where the UI is modified, ensuring thread safety.
+        Periodically checks the queue for messages from the worker thread.
         """
         try:
-            # Process a few messages at a time to keep the UI snappy.
             for _ in range(10): 
                 msg_type, data = self.repo_queue.get_nowait()
 
@@ -221,7 +269,6 @@ class GitHubRepoChecker:
                 
                 elif msg_type == "repos":
                     self.all_repos.extend(data)
-                    # When new data arrives, refresh the view but DO NOT reset the page.
                     self.filter_repos(reset_page=False) 
                 
                 elif msg_type == "status":
@@ -244,10 +291,8 @@ class GitHubRepoChecker:
                     self.update_status(f"Finished. Loaded {len(self.all_repos)} repositories.")
 
         except Empty:
-            # The queue is empty, nothing to do for now.
             pass
         finally:
-            # Check the queue again in 100ms.
             self.root.after(100, self.process_repo_queue)
 
     def handle_api_error(self, result):
@@ -275,7 +320,6 @@ class GitHubRepoChecker:
             
             image = Image.open(io.BytesIO(image_data))
             
-            # This try-except block makes the code compatible with older and newer versions of Pillow.
             try:
                 resample_filter = Image.Resampling.LANCZOS
             except AttributeError:
@@ -288,10 +332,7 @@ class GitHubRepoChecker:
             logging.error(f"Failed to load avatar: {e}")
 
     def filter_repos(self, event=None, reset_page=True):
-        """
-        Applies the search term to the list of all repositories.
-        The 'reset_page' parameter is key to fixing the UI jump.
-        """
+        """Applies the search term to the list of all repositories."""
         search_term = self.search_entry.get().lower()
         if search_term:
             self.filtered_repos = [repo for repo in self.all_repos if search_term in repo['name'].lower()]
@@ -327,7 +368,7 @@ class GitHubRepoChecker:
             self.tree.see(selected_item_id)
 
         total_pages = (len(self.filtered_repos) + self.page_size - 1) // self.page_size or 1
-        self.update_status(f"Page {self.current_page + 1}/{total_pages} | Loading {len(self.filtered_repos)} of {len(self.all_repos)} loaded repos.")
+        self.update_status(f"Page {self.current_page + 1}/{total_pages} | Displaying {len(self.filtered_repos)} of {len(self.all_repos)} loaded repos.")
     
     def update_last_commit_info(self):
         """Finds the most recent commit across all loaded repos."""
@@ -361,13 +402,10 @@ class GitHubRepoChecker:
         is_descending = self.sort_state.get("column") == column_key and not self.sort_state.get("descending", False)
         self.sort_state = {"column": column_key, "descending": is_descending}
 
-        # Sorting is much simpler when done on the data list directly.
         self.filtered_repos.sort(key=lambda repo: (repo.get(column_key) or 0) if isinstance(repo.get(column_key), int) else (repo.get(column_key) or "").lower(), reverse=is_descending)
         
         self.current_page = 0
         self.display_repos_page()
-
-    # --- Other UI interaction methods ---
 
     def show_context_menu(self, event):
         """Displays a right-click menu for the selected repository."""
@@ -388,7 +426,6 @@ class GitHubRepoChecker:
         self.current_theme = "dark" if self.current_theme == "light" else "light"
         try:
             self.root.tk.call("set_theme", self.current_theme)
-            # Persist the theme choice for the next launch.
             set_key(CONFIG_FILE, "UI_THEME", self.current_theme)
         except tk.TclError:
             messagebox.showerror("Theme Error", "Azure theme files could not be loaded.")
@@ -436,7 +473,7 @@ class GitHubRepoChecker:
         clone_path = os.path.join(folder, repo_name)
 
         if os.path.exists(clone_path):
-            messagebox.showerror("Exists", f"The destination path '{clone_path}' already exists and is not an empty directory.")
+            messagebox.showerror("Exists", f"The destination path '{clone_path}' already exists.")
             return
 
         self.repo_queue.put(("progress", "start"))
@@ -447,7 +484,7 @@ class GitHubRepoChecker:
         except git.exc.GitCommandError as e:
             stderr = e.stderr.lower()
             if "repository not found" in stderr:
-                msg = f"The repository '{repo_name}' could not be found. It may be private, deleted, or you may not have access."
+                msg = f"The repository '{repo_name}' could not be found."
             else: 
                 msg = f"An error occurred while cloning:\n\n{e.stderr}"
             messagebox.showerror("Clone Failed", msg)
@@ -486,5 +523,18 @@ class GitHubRepoChecker:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = GitHubRepoChecker(root)
+    root.withdraw()
+
+    # Create and display the splash screen.
+    splash = SplashScreen(root)
+
+    def main_app_setup():
+        # Hide the splash screen.
+        splash.close()
+        # Show the main window.
+        root.deiconify()
+        GitHubRepoChecker(root)
+
+    root.after(8000, main_app_setup)
+
     root.mainloop()
