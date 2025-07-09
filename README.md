@@ -12,7 +12,7 @@ Originally designed to check if GitHub was online, this project has evolved into
 - 🔎 **Real-time Search**: Instantly filter the repository list as you type.
 - 📊 **Enhanced Repo Info**: Shows name, stars ⭐, forks 🍴, language, and description in a sortable tree view.
 - 🔗 **Profile Link**: Clickable URL to the GitHub user’s profile.
-- 📦 **Clone with GitPython**: Double-click any repository to clone it to a selected folder using the robust `GitPython` library.
+- 📦 **Clone with GitPython**: Double-click any repository to clone it to a selected folder using the `GitPython` library.
 - 💾 **Export to CSV**: Export the entire filtered list of repositories to a CSV file.
 - 🌗 **Dark/Light Mode Toggle**: Uses the Azure-ttk-theme for a modern UI experience.
 - 🔁 **Keyboard Shortcuts**:
@@ -23,10 +23,10 @@ Originally designed to check if GitHub was online, this project has evolved into
 ## 🖼️ User Interface
 
 ### Light Mode
-![image](https://github.com/user-attachments/assets/c26e761e-7982-489d-b87e-1fe8176adb3f)
+![image](https://github.com/user-attachments/assets/fcb99ddf-507f-4151-881f-9a71b31b190b)
 
 ### Dark Mode
-![image](https://github.com/user-attachments/assets/79e5d3ee-d3ac-4f78-83a9-a1e106450b19)
+![image](https://github.com/user-attachments/assets/8f1c85dd-14ca-4c73-8226-20c5f8509037)
 
 Python Tkinter Theme Created by: [@rdbende](https://github.com/rdbende/Azure-ttk-theme/tree/main)
 
