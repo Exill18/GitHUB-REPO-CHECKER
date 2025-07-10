@@ -19,6 +19,7 @@ Originally designed to check if GitHub was online, this project has evolved into
   - `Enter` = Fetch Repos
   - `Ctrl+C` = Copy selected repo’s clone URL
 - 🖱️ **Right-Click Menu**: Quickly open a repository in your browser, copy its clone URL, or initiate a clone.
+- 📈 **Rate Limit Handling**: Checks GitHub API rate limits, informing the remaining requests and when the limit will reset.
 
 ## 🖼️ User Interface
 
@@ -80,6 +81,6 @@ The project's dependencies are listed in the `requirements.txt` file.
 
 ---
 
-Built with ❤️ by [Exill18](https://github.com/Exill18)
+Developed by [Exill18](https://github.com/Exill18)
 
 Feel free to fork and expand!

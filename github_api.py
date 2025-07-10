@@ -1,6 +1,7 @@
 import requests
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 # --- Setup ---
 load_dotenv()
@@ -18,6 +19,17 @@ class GitHubAPI:
         """
         self.token = os.getenv("GITHUB_PAT")
         self.headers = {"Authorization": f"token {self.token}"} if self.token else {}
+        self.rate_limit_remaining = None
+        self.rate_limit_reset_time = None
+
+    def _parse_rate_limit_headers(self, headers):
+        """
+        Parses the rate limit headers from the API response.
+        """
+        if 'X-RateLimit-Remaining' in headers:
+            self.rate_limit_remaining = int(headers['X-RateLimit-Remaining'])
+        if 'X-RateLimit-Reset' in headers:
+            self.rate_limit_reset_time = datetime.fromtimestamp(int(headers['X-RateLimit-Reset']))
 
     def check_status(self):
         """
@@ -50,6 +62,7 @@ class GitHubAPI:
         url = f"{self.BASE_URL}/users/{username}"
         try:
             response = requests.get(url, headers=self.headers)
+            self._parse_rate_limit_headers(response.headers)
             response.raise_for_status()
             return {"success": True, "data": response.json()}
         except requests.exceptions.HTTPError as e:
@@ -72,6 +85,7 @@ class GitHubAPI:
             url = f"{self.BASE_URL}/users/{username}/repos?per_page=100&page={page}&sort=updated"
             try:
                 response = requests.get(url, headers=self.headers)
+                self._parse_rate_limit_headers(response.headers)
                 response.raise_for_status()
                 page_data = response.json()
                 if not page_data:

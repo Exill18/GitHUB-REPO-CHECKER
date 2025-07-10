@@ -29,11 +29,10 @@ class SplashScreen:
     """
     def __init__(self, parent):
         self.root = parent
-        # Create a Toplevel window, which is a separate, top-level window.
         self.window = tk.Toplevel(parent)
-        self.window.overrideredirect(True) # Make it borderless.
+        self.window.overrideredirect(True)
+        self.is_running = True  # Flag to control the animation loop
 
-        # Load the GIF and handle potential errors if the file is missing.
         try:
             self.gif_path = "loading.gif"
             self.gif_info = Image.open(self.gif_path)
@@ -41,11 +40,10 @@ class SplashScreen:
             self.frame_iterator = cycle(self.frames)
         except FileNotFoundError:
             print("Error: loading.gif not found. Skipping splash screen.")
-            self.frames = None # Signal that the GIF is missing.
+            self.frames = None
             self.close()
             return
 
-        # Center the splash screen on the monitor.
         width, height = self.gif_info.size
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
@@ -56,7 +54,6 @@ class SplashScreen:
         self.label = ttk.Label(self.window)
         self.label.pack()
 
-        # Start the animation loop.
         self.animate()
 
     def get_frames(self, image):
@@ -72,20 +69,21 @@ class SplashScreen:
 
     def animate(self):
         """Updates the label with the next frame of the GIF."""
-        if not self.frames: return
+        if not self.is_running or not self.frames:
+            return
 
         current_frame = next(self.frame_iterator)
         self.label.configure(image=current_frame)
-        # The delay is read from the GIF's metadata, defaulting to 100ms.
         self.root.after(self.gif_info.info.get('duration', 100), self.animate)
 
     def close(self):
         """Destroys the splash screen window."""
+        self.is_running = False
         self.window.destroy()
 
 class GitHubRepoChecker:
     """
-    The main application window for browsing and managing GitHub repositories.
+    The main application window for Browse and managing GitHub repositories.
     """
     def __init__(self, root):
         self.root = root
@@ -97,7 +95,7 @@ class GitHubRepoChecker:
 
         self.all_repos = []
         self.filtered_repos = []
-        
+
         self.profile_link_url = ""
         self.sort_state = {}
 
@@ -111,7 +109,7 @@ class GitHubRepoChecker:
 
         self.page_size = 25
         self.current_page = 0
-        
+
         self.create_widgets()
         self.bind_shortcuts()
         self.process_repo_queue()
@@ -144,7 +142,7 @@ class GitHubRepoChecker:
 
         self.export_button = ttk.Button(tool_frame, text="Export CSV", command=self.export_to_csv)
         self.export_button.pack(side=tk.LEFT, padx=5)
-        
+
         self.theme_toggle_button = ttk.Button(tool_frame, text="Toggle Theme", command=self.toggle_theme)
         self.theme_toggle_button.pack(side=tk.LEFT)
 
@@ -156,19 +154,19 @@ class GitHubRepoChecker:
         # --- Treeview for Displaying Repositories ---
         columns = ("name", "stars", "forks", "lang", "desc")
         self.tree = ttk.Treeview(self.root, columns=columns, show="headings", selectmode="browse")
-        
+
         self.tree.heading("name", text="Repository Name", command=lambda: self.sort_by_column("name"))
         self.tree.column("name", width=200, stretch=False)
 
         self.tree.heading("stars", text="⭐ Stars", command=lambda: self.sort_by_column("stargazers_count"))
         self.tree.column("stars", width=80, anchor="center", stretch=False)
-        
+
         self.tree.heading("forks", text="🍴 Forks", command=lambda: self.sort_by_column("forks_count"))
         self.tree.column("forks", width=80, anchor="center", stretch=False)
 
         self.tree.heading("lang", text="Language", command=lambda: self.sort_by_column("language"))
         self.tree.column("lang", width=120, anchor="w", stretch=False)
-        
+
         self.tree.heading("desc", text="Description")
         self.tree.column("desc", width=400)
 
@@ -186,13 +184,16 @@ class GitHubRepoChecker:
         self.last_commit_label = ttk.Label(self.root, text="Last Commit: -")
         self.last_commit_label.pack(pady=(5, 0))
 
+        self.rate_limit_label = ttk.Label(self.root, text="")
+        self.rate_limit_label.pack(pady=(5, 0))
+
         self.profile_link = ttk.Label(self.root, text="", style="Link.TLabel")
         self.profile_link.pack()
         self.profile_link.bind("<Button-1>", self.open_user_profile)
 
         self.status_label = ttk.Label(self.root, text="Enter a username and click 'Get Repos'.", style="Dim.TLabel")
         self.status_label.pack(pady=5, fill=tk.X, padx=10)
-        
+
         # --- Custom Styles ---
         s = ttk.Style()
         s.configure("Link.TLabel", foreground="blue")
@@ -213,7 +214,7 @@ class GitHubRepoChecker:
         self.profile_link.config(text="")
         self.profile_link_url = ""
         self.avatar_label.config(image=None)
-        
+
         while not self.repo_queue.empty():
             try: self.repo_queue.get_nowait()
             except Empty: break
@@ -244,14 +245,16 @@ class GitHubRepoChecker:
             return
 
         self.repo_queue.put(("profile", user_result["data"]))
-        
+        self.repo_queue.put(("rate_limit", None))
+
         self.repo_queue.put(("status", f"Streaming repositories for '{username}'..."))
         for page_result in self.api.stream_user_repos(username):
             if not page_result["success"]:
                 self.repo_queue.put(("error", page_result))
                 return
             self.repo_queue.put(("repos", page_result["data"]))
-        
+            self.repo_queue.put(("rate_limit", None))
+
         self.repo_queue.put(("done", None))
 
     def process_repo_queue(self):
@@ -259,36 +262,39 @@ class GitHubRepoChecker:
         Periodically checks the queue for messages from the worker thread.
         """
         try:
-            for _ in range(10): 
+            for _ in range(10):
                 msg_type, data = self.repo_queue.get_nowait()
 
                 if msg_type == "profile":
                     self.profile_link.config(text=f"Profile: {data['html_url']}")
                     self.profile_link_url = data['html_url']
                     threading.Thread(target=self.load_avatar, args=(data['avatar_url'],), daemon=True).start()
-                
+
                 elif msg_type == "repos":
                     self.all_repos.extend(data)
-                    self.filter_repos(reset_page=False) 
-                
+                    self.filter_repos(reset_page=False)
+
                 elif msg_type == "status":
                     self.update_status(data)
 
                 elif msg_type == "progress":
-                    if data == "start": 
+                    if data == "start":
                         self.progress_bar.pack(fill=tk.X, padx=10, pady=(0, 5))
                         self.progress_bar.start()
-                    else: 
+                    else:
                         self.progress_bar.stop()
                         self.progress_bar.pack_forget()
-                
+
                 elif msg_type == "error":
                     self.handle_api_error(data)
-                
+
                 elif msg_type == "done":
                     self.repo_queue.put(("progress", "stop"))
                     self.update_last_commit_info()
                     self.update_status(f"Finished. Loaded {len(self.all_repos)} repositories.")
+
+                elif msg_type == "rate_limit":
+                    self.update_rate_limit_display()
 
         except Empty:
             pass
@@ -300,26 +306,28 @@ class GitHubRepoChecker:
         self.repo_queue.put(("progress", "stop"))
         status_code = result.get("status_code")
         message = result.get("message", "An unknown error occurred.")
-        
+
         if status_code == 404:
             messagebox.showerror("Not Found", f"GitHub user '{self.user_entry.get().strip()}' not found.")
         elif status_code == 403:
-             messagebox.showerror("Rate Limit", "GitHub API rate limit reached. Check your PAT or wait for the limit to reset.")
+            reset_time_str = self.api.rate_limit_reset_time.strftime('%H:%M:%S') if self.api.rate_limit_reset_time else "unknown"
+            messagebox.showerror("Rate Limit", f"GitHub API rate limit reached. Your limit will reset at {reset_time_str}. Check your PAT or wait for the limit to reset.")
         elif status_code == 401:
             messagebox.showerror("Unauthorized", "Invalid or missing GitHub Personal Access Token.")
         else:
             messagebox.showerror("API Error", f"An error occurred: {message}")
-        
+
         self.update_status(f"Error: {message}")
+        self.update_rate_limit_display()
 
     def load_avatar(self, url):
-        """Downloads and displays the user's avatar image."""
+        """Downloads and displays the user's avatar image with robust error handling."""
         try:
             with urllib.request.urlopen(url) as response:
                 image_data = response.read()
-            
+
             image = Image.open(io.BytesIO(image_data))
-            
+
             try:
                 resample_filter = Image.Resampling.LANCZOS
             except AttributeError:
@@ -328,8 +336,12 @@ class GitHubRepoChecker:
             image = image.resize((40, 40), resample_filter)
             self.avatar_image = ImageTk.PhotoImage(image)
             self.avatar_label.config(image=self.avatar_image)
+        except urllib.error.URLError as e:
+            logging.error(f"Failed to load avatar due to a URL error: {e}")
+        except (IOError, SyntaxError) as e:
+            logging.error(f"Failed to process avatar image data: {e}")
         except Exception as e:
-            logging.error(f"Failed to load avatar: {e}")
+            logging.error(f"An unexpected error occurred while loading the avatar: {e}")
 
     def filter_repos(self, event=None, reset_page=True):
         """Applies the search term to the list of all repositories."""
@@ -338,18 +350,18 @@ class GitHubRepoChecker:
             self.filtered_repos = [repo for repo in self.all_repos if search_term in repo['name'].lower()]
         else:
             self.filtered_repos = self.all_repos
-        
+
         if reset_page:
             self.current_page = 0
-            
+
         self.display_repos_page()
 
     def display_repos_page(self):
         """Clears and repopulates the treeview with the current page of filtered repos."""
         selected_item_id = self.tree.selection()[0] if self.tree.selection() else None
-        
+
         self.tree.delete(*self.tree.get_children())
-        
+
         start = self.current_page * self.page_size
         end = start + self.page_size
         page_repos = self.filtered_repos[start:end]
@@ -369,17 +381,17 @@ class GitHubRepoChecker:
 
         total_pages = (len(self.filtered_repos) + self.page_size - 1) // self.page_size or 1
         self.update_status(f"Page {self.current_page + 1}/{total_pages} | Displaying {len(self.filtered_repos)} of {len(self.all_repos)} loaded repos.")
-    
+
     def update_last_commit_info(self):
         """Finds the most recent commit across all loaded repos."""
         if not self.all_repos: return
-        
+
         latest_commit = max(
             (datetime.strptime(repo['pushed_at'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.utc)
              for repo in self.all_repos if repo.get('pushed_at')),
             default=None
         )
-        
+
         if latest_commit:
             local_tz = datetime.now().astimezone().tzinfo
             self.last_commit_label.config(text=f"Last Commit: {latest_commit.astimezone(local_tz).strftime('%Y-%m-%d %H:%M:%S %Z')}")
@@ -403,7 +415,7 @@ class GitHubRepoChecker:
         self.sort_state = {"column": column_key, "descending": is_descending}
 
         self.filtered_repos.sort(key=lambda repo: (repo.get(column_key) or 0) if isinstance(repo.get(column_key), int) else (repo.get(column_key) or "").lower(), reverse=is_descending)
-        
+
         self.current_page = 0
         self.display_repos_page()
 
@@ -411,15 +423,15 @@ class GitHubRepoChecker:
         """Displays a right-click menu for the selected repository."""
         selected_item_id = self.tree.identify_row(event.y)
         if not selected_item_id: return
-        
+
         self.tree.selection_set(selected_item_id)
-        
+
         context_menu = tk.Menu(self.root, tearoff=0)
         context_menu.add_command(label="Open in Browser", command=self.open_selected_repo_web)
         context_menu.add_command(label="Copy Clone URL", command=self.copy_repo_url_to_clipboard)
         context_menu.add_separator()
         context_menu.add_command(label="Clone Repository...", command=self.threaded_clone_repo)
-        
+
         context_menu.tk_popup(event.x_root, event.y_root)
 
     def toggle_theme(self):
@@ -432,6 +444,11 @@ class GitHubRepoChecker:
 
     def update_status(self, message):
         self.status_label.config(text=message)
+
+    def update_rate_limit_display(self):
+        """Updates the rate limit label in the UI."""
+        if self.api.rate_limit_remaining is not None:
+            self.rate_limit_label.config(text=f"API Requests Remaining: {self.api.rate_limit_remaining}")
 
     def open_user_profile(self, event):
         if self.profile_link_url:
@@ -460,10 +477,10 @@ class GitHubRepoChecker:
         if not selection:
             messagebox.showinfo("No Selection", "Please select a repository to clone.")
             return
-        
+
         folder = filedialog.askdirectory(title="Choose folder to clone into")
         if not folder: return
-        
+
         repo_name = self.tree.item(selection[0])['values'][0]
         threading.Thread(target=self.clone_repo, args=(repo_name, folder), daemon=True).start()
 
@@ -485,7 +502,7 @@ class GitHubRepoChecker:
             stderr = e.stderr.lower()
             if "repository not found" in stderr:
                 msg = f"The repository '{repo_name}' could not be found."
-            else: 
+            else:
                 msg = f"An error occurred while cloning:\n\n{e.stderr}"
             messagebox.showerror("Clone Failed", msg)
         except Exception as e:
@@ -498,16 +515,16 @@ class GitHubRepoChecker:
         if not self.filtered_repos:
             messagebox.showwarning("No Data", "There is no repository data to export.")
             return
-            
+
         path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
         if not path: return
-            
+
         try:
             with open(path, "w", newline='', encoding="utf-8") as f:
                 writer = csv.writer(f)
                 headers = [self.tree.heading(col)["text"] for col in self.tree["columns"]]
                 writer.writerow(headers)
-                
+
                 for repo in self.filtered_repos:
                     writer.writerow([
                         repo.get("name", ""),
@@ -525,13 +542,10 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()
 
-    # Create and display the splash screen.
     splash = SplashScreen(root)
 
     def main_app_setup():
-        # Hide the splash screen.
         splash.close()
-        # Show the main window.
         root.deiconify()
         GitHubRepoChecker(root)
 
