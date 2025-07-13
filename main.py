@@ -152,7 +152,7 @@ class GitHubRepoChecker:
         self.progress_bar.pack_forget()
 
         # --- Treeview for Displaying Repositories ---
-        columns = ("name", "stars", "forks", "lang", "desc")
+        columns = ("name", "stars", "forks", "lang", "desc", "open_issues", "license")
         self.tree = ttk.Treeview(self.root, columns=columns, show="headings", selectmode="browse")
 
         self.tree.heading("name", text="Repository Name", command=lambda: self.sort_by_column("name"))
@@ -166,6 +166,12 @@ class GitHubRepoChecker:
 
         self.tree.heading("lang", text="Language", command=lambda: self.sort_by_column("language"))
         self.tree.column("lang", width=120, anchor="w", stretch=False)
+
+        self.tree.heading("open_issues", text="Open Issues", command=lambda: self.sort_by_column("open_issues_count"))
+        self.tree.column("open_issues", width=100, anchor="center", stretch=False)
+
+        self.tree.heading("license", text="License", command=lambda: self.sort_by_column("license"))
+        self.tree.column("license", width=150, anchor="w", stretch=False)
 
         self.tree.heading("desc", text="Description")
         self.tree.column("desc", width=400)
@@ -367,11 +373,15 @@ class GitHubRepoChecker:
         page_repos = self.filtered_repos[start:end]
 
         for repo in page_repos:
+            license_info = repo.get("license")
+            license_name = license_info["name"] if license_info and "name" in license_info else "N/A"
             self.tree.insert("", "end", iid=repo["name"], values=(
                 repo["name"],
                 repo.get("stargazers_count", 0),
                 repo.get("forks_count", 0),
                 repo.get("language", "-"),
+                repo.get("open_issues_count", 0),
+                license_name,
                 (repo.get("description") or "-").replace('\n', ' '),
             ))
 
