@@ -12,10 +12,12 @@ from dotenv import load_dotenv, set_key
 from PIL import Image, ImageTk
 import io
 import urllib.request
+import urllib.error
 import git
 from queue import Queue, Empty
 from itertools import count, cycle
 from collections import Counter, defaultdict
+from typing import List, Dict, Any, Optional, Tuple
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -23,22 +25,40 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from github_api import GitHubAPI
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('github_repo_checker.log')
+    ]
+)
+logger = logging.getLogger(__name__)
+
 CONFIG_FILE = ".env"
 
 class SplashScreen:
-    def __init__(self, parent):
+    def __init__(self, parent: tk.Tk) -> None:
         self.root = parent
         self.window = tk.Toplevel(parent)
         self.window.overrideredirect(True)
         self.is_running = True
+        
         try:
             self.gif_path = "loading.gif"
             self.gif_info = Image.open(self.gif_path)
             self.frames = self.get_frames(self.gif_info)
             self.frame_iterator = cycle(self.frames)
+            logger.info("Splash screen initialized successfully")
         except FileNotFoundError:
-            print("Error: loading.gif not found. Skipping splash screen.")
+            logger.warning("loading.gif not found. Skipping splash screen animation.")
+            self.frames = None
+            self.close()
+            return
+        except Exception as e:
+            logger.error(f"Failed to initialize splash screen: {e}")
             self.frames = None
             self.close()
             return
@@ -52,60 +72,147 @@ class SplashScreen:
         self.label.pack()
         self.animate()
 
-    def get_frames(self, image):
+    def get_frames(self, image: Image.Image) -> List[ImageTk.PhotoImage]:
+        """Extract frames from animated GIF."""
         frame_list = []
-        for i in count(1):
-            try:
-                image.seek(i)
-                frame_list.append(ImageTk.PhotoImage(image.copy()))
-            except EOFError:
-                break
+        try:
+            for i in count(1):
+                try:
+                    image.seek(i)
+                    frame_list.append(ImageTk.PhotoImage(image.copy()))
+                except EOFError:
+                    break
+            logger.debug(f"Extracted {len(frame_list)} frames from GIF")
+        except Exception as e:
+            logger.error(f"Error extracting frames: {e}")
         return frame_list
 
-    def animate(self):
+    def animate(self) -> None:
+        """Animate the splash screen GIF."""
         if not self.is_running or not self.frames:
             return
-        current_frame = next(self.frame_iterator)
-        self.label.configure(image=current_frame)
-        self.root.after(self.gif_info.info.get('duration', 100), self.animate)
+        try:
+            current_frame = next(self.frame_iterator)
+            self.label.configure(image=current_frame)
+            self.root.after(self.gif_info.info.get('duration', 100), self.animate)
+        except Exception as e:
+            logger.error(f"Error during animation: {e}")
 
-    def close(self):
+    def close(self) -> None:
+        """Close the splash screen."""
         self.is_running = False
-        self.window.destroy()
+        try:
+            self.window.destroy()
+            logger.debug("Splash screen closed")
+        except Exception as e:
+            logger.error(f"Error closing splash screen: {e}")
 
 class GitHubRepoChecker:
-    def __init__(self, root):
+    def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("GitHub Repo Checker")
         self.root.geometry("1100x800")
-
+        
+        # Initialize core components
         self.api = GitHubAPI()
-        self.repo_queue = Queue()
-
-        self.all_repos = []
-        self.filtered_repos = []
-
+        self.repo_queue: Queue = Queue()
+        
+        # Data storage
+        self.all_repos: List[Dict[str, Any]] = []
+        self.filtered_repos: List[Dict[str, Any]] = []
+        
+        # UI state
         self.profile_link_url = ""
-        self.sort_state = {}
-
+        self.sort_state: Dict[str, Any] = {}
+        
+        # Theme management
         self.current_theme = os.getenv("UI_THEME", "light")
+        self._setup_theme()
+        
+        # Pagination
+        self.page_size = 25
+        self.current_page = 0
+        
+        # Insights
+        self.insight_canvases: List[Any] = []
+        
+        # UI attributes that will be set during widget creation
+        self.avatar_image: Optional[ImageTk.PhotoImage] = None
+        
+        logger.info("Initializing GitHub Repo Checker application")
+        
+        try:
+            self.create_widgets()
+            self.bind_shortcuts()
+            self.process_repo_queue()
+            logger.info("Application initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize application: {e}")
+            raise
+            
+    def _setup_theme(self) -> None:
+        """Set up the application theme."""
         try:
             self.root.tk.call("source", "azure.tcl")
             self.root.tk.call("set_theme", self.current_theme)
-        except tk.TclError:
-            print("Azure theme not found. Using default theme.")
+            logger.info(f"Applied {self.current_theme} theme")
+        except tk.TclError as e:
+            logger.warning(f"Azure theme not found: {e}. Using default theme.")
             self.current_theme = None
+        except Exception as e:
+            logger.error(f"Error setting up theme: {e}")
+            self.current_theme = None
+    
+    def _validate_username(self, username: str) -> Tuple[bool, str]:
+        """Validate GitHub username input.
+        
+        Returns:
+            Tuple of (is_valid: bool, error_message: str)
+        """
+        if not username or not isinstance(username, str):
+            return False, "Username must be a non-empty string"
+            
+        username = username.strip()
+        if not username:
+            return False, "Username cannot be empty"
+            
+        if len(username) > 39:  # GitHub username max length
+            return False, "Username cannot be longer than 39 characters"
+            
+        if not all(c.isalnum() or c in '-._' for c in username):
+            return False, "Username contains invalid characters"
+            
+        if username.startswith('-') or username.endswith('-'):
+            return False, "Username cannot start or end with a hyphen"
+            
+        return True, ""
+    
+    def _validate_file_path(self, file_path: str) -> Tuple[bool, str]:
+        """Validate file path for safety.
+        
+        Returns:
+            Tuple of (is_valid: bool, error_message: str)
+        """
+        if not file_path or not isinstance(file_path, str):
+            return False, "File path must be a non-empty string"
+            
+        try:
+            # Check if path is accessible and safe
+            if not os.path.exists(file_path):
+                return False, "Path does not exist"
+                
+            if not os.path.isdir(file_path):
+                return False, "Path is not a directory"
+                
+            if not os.access(file_path, os.W_OK):
+                return False, "No write permission for this directory"
+                
+            return True, ""
+        except Exception as e:
+            logger.error(f"Error validating file path {file_path}: {e}")
+            return False, f"Invalid path: {e}"
 
-        self.page_size = 25
-        self.current_page = 0
-
-        self.insight_canvases = []
-
-        self.create_widgets()
-        self.bind_shortcuts()
-        self.process_repo_queue()
-
-    def create_widgets(self):
+    def create_widgets(self) -> None:
         self.notebook = ttk.Notebook(self.root)
         self.repos_tab = ttk.Frame(self.notebook)
         self.insights_tab = ttk.Frame(self.notebook)
@@ -205,7 +312,11 @@ class GitHubRepoChecker:
         self.root.bind('<Return>', self.start_repo_fetch)
         self.root.bind('<Control-c>', self.copy_repo_url_to_clipboard)
 
-    def start_repo_fetch(self, event=None):
+    def start_repo_fetch(self, event: Optional[tk.Event] = None) -> None:
+        """Start fetching repositories for the entered username."""
+        logger.info("Starting repository fetch")
+        
+        # Clear previous data
         self.all_repos.clear()
         self.filtered_repos.clear()
         self.tree.delete(*self.tree.get_children())
@@ -213,40 +324,87 @@ class GitHubRepoChecker:
         self.profile_link.config(text="")
         self.profile_link_url = ""
         self.avatar_label.config(image=None)
+        self.avatar_image = None  # Clear reference to prevent memory leaks
+        
+        # Clear the queue
         while not self.repo_queue.empty():
             try:
                 self.repo_queue.get_nowait()
             except Empty:
                 break
+                
         threading.Thread(target=self.fetch_repos_worker, daemon=True).start()
 
-    def fetch_repos_worker(self):
-        username = self.user_entry.get().strip()
-        if not username:
-            messagebox.showwarning("Input Required", "Please enter a GitHub username or organization.")
-            return
-        self.repo_queue.put(("status", "Checking GitHub status..."))
-        self.repo_queue.put(("progress", "start"))
-        status_ok, status_desc = self.api.check_status()
-        if not status_ok:
-            messagebox.showwarning("GitHub Status", f"⚠ GitHub may be experiencing issues: {status_desc}")
-        self.repo_queue.put(("status", f"Fetching profile for '{username}'..."))
-        user_result = self.api.get_user(username)
-        if not user_result["success"]:
-            self.repo_queue.put(("error", user_result))
-            return
-        user_data = user_result["data"]
-        entity_type = user_data.get("type", "User")
-        self.repo_queue.put(("profile", user_data))
-        self.repo_queue.put(("rate_limit", None))
-        self.repo_queue.put(("status", f"Streaming repositories for '{username}'..."))
-        for page_result in self.api.stream_user_repos(username, entity_type):
-            if not page_result["success"]:
-                self.repo_queue.put(("error", page_result))
+    def fetch_repos_worker(self) -> None:
+        """Worker thread for fetching repositories."""
+        try:
+            username = self.user_entry.get().strip()
+            
+            # Validate username input
+            is_valid, error_msg = self._validate_username(username)
+            if not is_valid:
+                logger.warning(f"Invalid username input: {error_msg}")
+                messagebox.showwarning("Invalid Input", error_msg)
                 return
-            self.repo_queue.put(("repos", page_result["data"]))
+                
+            logger.info(f"Fetching repositories for user: {username}")
+            
+            self.repo_queue.put(("status", "Checking GitHub status..."))
+            self.repo_queue.put(("progress", "start"))
+            
+            # Check GitHub status
+            status_ok, status_desc = self.api.check_status()
+            if not status_ok:
+                logger.warning(f"GitHub status issue: {status_desc}")
+                messagebox.showwarning("GitHub Status", f"⚠ GitHub may be experiencing issues: {status_desc}")
+            
+            # Fetch user profile
+            self.repo_queue.put(("status", f"Fetching profile for '{username}'..."))
+            user_result = self.api.get_user(username)
+            
+            if not user_result["success"]:
+                logger.error(f"Failed to fetch user profile: {user_result.get('message', 'Unknown error')}")
+                self.repo_queue.put(("error", user_result))
+                return
+                
+            user_data = user_result["data"]
+            if not isinstance(user_data, dict):
+                logger.error(f"Invalid user data format: {type(user_data)}")
+                self.repo_queue.put(("error", {"success": False, "message": "Invalid user data format"}))
+                return
+                
+            entity_type = user_data.get("type", "User")
+            logger.info(f"Found {entity_type.lower()}: {username}")
+            
+            self.repo_queue.put(("profile", user_data))
             self.repo_queue.put(("rate_limit", None))
-        self.repo_queue.put(("done", None))
+            
+            # Stream repositories
+            self.repo_queue.put(("status", f"Streaming repositories for '{username}'..."))
+            repo_count = 0
+            
+            for page_result in self.api.stream_user_repos(username, entity_type):
+                if not page_result["success"]:
+                    logger.error(f"Error streaming repositories: {page_result.get('message', 'Unknown error')}")
+                    self.repo_queue.put(("error", page_result))
+                    return
+                    
+                repo_data = page_result["data"]
+                if isinstance(repo_data, list):
+                    repo_count += len(repo_data)
+                    logger.debug(f"Processed {len(repo_data)} repositories (total: {repo_count})")
+                    
+                self.repo_queue.put(("repos", repo_data))
+                self.repo_queue.put(("rate_limit", None))
+                
+            logger.info(f"Successfully fetched {repo_count} repositories for {username}")
+            self.repo_queue.put(("done", None))
+            
+        except Exception as e:
+            error_msg = f"Unexpected error during repository fetch: {e}"
+            logger.error(error_msg, exc_info=True)
+            self.repo_queue.put(("error", {"success": False, "message": error_msg}))
+            self.repo_queue.put(("progress", "stop"))
 
     def process_repo_queue(self):
         try:
@@ -298,24 +456,71 @@ class GitHubRepoChecker:
         self.update_status(f"Error: {message}")
         self.update_rate_limit_display()
 
-    def load_avatar(self, url):
+    def load_avatar(self, url: str) -> None:
+        """Load and display user avatar from URL."""
+        if not url or not isinstance(url, str):
+            logger.warning("Invalid avatar URL provided")
+            return
+            
+        logger.debug(f"Loading avatar from: {url}")
+        
         try:
-            with urllib.request.urlopen(url) as response:
+            # Validate URL format
+            if not url.startswith(('http://', 'https://')):
+                logger.warning(f"Avatar URL doesn't start with http(s): {url}")
+                return
+                
+            # Set timeout for avatar loading
+            with urllib.request.urlopen(url, timeout=10) as response:
+                if response.status != 200:
+                    logger.warning(f"Avatar request returned status {response.status}")
+                    return
+                    
+                content_type = response.headers.get('Content-Type', '')
+                if not content_type.startswith('image/'):
+                    logger.warning(f"Avatar URL returned non-image content: {content_type}")
+                    return
+                    
                 image_data = response.read()
+                
+            if not image_data:
+                logger.warning("Avatar image data is empty")
+                return
+                
+            # Process the image
             image = Image.open(io.BytesIO(image_data))
+            
+            # Verify it's a valid image
+            image.verify()
+            
+            # Reopen for processing (verify() closes the image)
+            image = Image.open(io.BytesIO(image_data))
+            
+            # Use appropriate resampling filter
             try:
                 resample_filter = Image.Resampling.LANCZOS
             except AttributeError:
                 resample_filter = Image.LANCZOS
+                
+            # Resize avatar
             image = image.resize((40, 40), resample_filter)
+            
+            # Convert to PhotoImage and display
             self.avatar_image = ImageTk.PhotoImage(image)
             self.avatar_label.config(image=self.avatar_image)
+            
+            logger.debug("Avatar loaded successfully")
+            
+        except urllib.error.HTTPError as e:
+            logger.error(f"HTTP error loading avatar: {e.code} {e.reason}")
         except urllib.error.URLError as e:
-            logging.error(f"Failed to load avatar due to a URL error: {e}")
+            logger.error(f"URL error loading avatar: {e.reason}")
+        except OSError as e:
+            logger.error(f"OS error loading avatar: {e}")
         except (IOError, SyntaxError) as e:
-            logging.error(f"Failed to process avatar image data: {e}")
+            logger.error(f"Image processing error for avatar: {e}")
         except Exception as e:
-            logging.error(f"An unexpected error occurred while loading the avatar: {e}")
+            logger.error(f"Unexpected error loading avatar: {e}", exc_info=True)
 
     def filter_repos(self, event=None, reset_page=True):
         search_term = self.search_entry.get().lower()
@@ -430,38 +635,99 @@ class GitHubRepoChecker:
         self.root.clipboard_append(url)
         self.update_status(f"Copied clone URL for {repo_name}")
 
-    def threaded_clone_repo(self, event=None):
+    def threaded_clone_repo(self, event: Optional[tk.Event] = None) -> None:
+        """Start cloning a repository in a separate thread."""
         selection = self.tree.selection()
         if not selection:
             messagebox.showinfo("No Selection", "Please select a repository to clone.")
             return
+            
+        try:
+            repo_name = self.tree.item(selection[0])['values'][0]
+            if not repo_name:
+                messagebox.showerror("Invalid Selection", "Selected repository has no name.")
+                return
+        except (IndexError, KeyError) as e:
+            logger.error(f"Error getting repository name: {e}")
+            messagebox.showerror("Selection Error", "Could not get repository name from selection.")
+            return
+            
         folder = filedialog.askdirectory(title="Choose folder to clone into")
         if not folder:
             return
-        repo_name = self.tree.item(selection[0])['values'][0]
+            
+        # Validate the selected folder
+        is_valid, error_msg = self._validate_file_path(folder)
+        if not is_valid:
+            messagebox.showerror("Invalid Directory", error_msg)
+            return
+            
+        logger.info(f"Starting clone of {repo_name} to {folder}")
         threading.Thread(target=self.clone_repo, args=(repo_name, folder), daemon=True).start()
 
-    def clone_repo(self, repo_name, folder):
-        username = self.user_entry.get().strip()
-        repo_url = f"https://github.com/{username}/{repo_name}.git"
-        clone_path = os.path.join(folder, repo_name)
-        if os.path.exists(clone_path):
-            messagebox.showerror("Exists", f"The destination path '{clone_path}' already exists.")
-            return
-        self.repo_queue.put(("progress", "start"))
-        self.repo_queue.put(("status", f"Cloning '{repo_name}'..."))
+    def clone_repo(self, repo_name: str, folder: str) -> None:
+        """Clone a repository to the specified folder."""
         try:
+            username = self.user_entry.get().strip()
+            if not username:
+                logger.error("No username available for cloning")
+                messagebox.showerror("Error", "No username available for cloning.")
+                return
+                
+            # Validate inputs
+            if not repo_name or not isinstance(repo_name, str):
+                logger.error(f"Invalid repository name: {repo_name}")
+                messagebox.showerror("Error", "Invalid repository name.")
+                return
+                
+            repo_url = f"https://github.com/{username}/{repo_name}.git"
+            clone_path = os.path.join(folder, repo_name)
+            
+            # Check if destination already exists
+            if os.path.exists(clone_path):
+                logger.warning(f"Clone destination already exists: {clone_path}")
+                messagebox.showerror("Exists", f"The destination path '{clone_path}' already exists.")
+                return
+                
+            logger.info(f"Cloning {repo_url} to {clone_path}")
+            self.repo_queue.put(("progress", "start"))
+            self.repo_queue.put(("status", f"Cloning '{repo_name}'..."))
+            
+            # Clone the repository
             git.Repo.clone_from(repo_url, clone_path)
+            
+            logger.info(f"Successfully cloned {repo_name}")
             messagebox.showinfo("Success", f"Repository '{repo_name}' cloned to:\n{folder}")
+            
         except git.exc.GitCommandError as e:
-            stderr = e.stderr.lower()
-            if "repository not found" in stderr:
-                msg = f"The repository '{repo_name}' could not be found."
+            error_msg = f"Git error while cloning {repo_name}: {e}"
+            logger.error(error_msg)
+            
+            if hasattr(e, 'stderr') and e.stderr:
+                stderr = e.stderr.lower()
+                if "repository not found" in stderr:
+                    msg = f"The repository '{repo_name}' could not be found or is not accessible."
+                elif "permission denied" in stderr:
+                    msg = f"Permission denied while cloning '{repo_name}'. Check your access rights."
+                elif "authentication failed" in stderr:
+                    msg = f"Authentication failed for '{repo_name}'. The repository may be private."
+                else:
+                    msg = f"Git error occurred while cloning:\n\n{e.stderr}"
             else:
-                msg = f"An error occurred while cloning:\n\n{e.stderr}"
+                msg = f"Git command failed: {e}"
+                
             messagebox.showerror("Clone Failed", msg)
+            
+        except OSError as e:
+            error_msg = f"File system error while cloning {repo_name}: {e}"
+            logger.error(error_msg)
+            messagebox.showerror("Clone Failed", f"File system error: {e}")
+            
         except Exception as e:
+            error_msg = f"Unexpected error while cloning {repo_name}: {e}"
+            logger.error(error_msg, exc_info=True)
             messagebox.showerror("Clone Failed", f"An unexpected error occurred: {e}")
+            
         finally:
             self.repo_queue.put(("progress", "stop"))
             self.repo_queue.put(("status", f"Clone operation for '{repo_name}' finished."))
@@ -559,16 +825,68 @@ class GitHubRepoChecker:
         canvas_activity.get_tk_widget().grid(row=1, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
         self.insight_canvases.append(canvas_activity)
 
-    def run(self):
+    def run(self) -> None:
+        """Start the main application loop."""
+        logger.info("Starting main application loop")
         self.root.mainloop()
 
+
+def main() -> None:
+    """Main entry point for the GitHub Repo Checker application."""
+    try:
+        logger.info("Starting GitHub Repo Checker application")
+        
+        # Create main window
+        root = tk.Tk()
+        root.withdraw()  # Hide initially
+        
+        # Set up basic error handling for Tkinter
+        def handle_tk_error(exc, val, tb):
+            logger.error(f"Tkinter error: {exc.__name__}: {val}", exc_info=(exc, val, tb))
+            messagebox.showerror("Application Error", f"An unexpected error occurred:\n{val}")
+        
+        root.report_callback_exception = handle_tk_error
+        
+        # Show splash screen
+        splash = SplashScreen(root)
+        
+        def main_app_setup() -> None:
+            """Set up the main application after splash screen."""
+            try:
+                splash.close()
+                root.deiconify()
+                app = GitHubRepoChecker(root)
+                logger.info("Application setup completed successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize main application: {e}", exc_info=True)
+                messagebox.showerror(
+                    "Initialization Error", 
+                    f"Failed to start the application:\n{e}\n\nCheck the log file for details."
+                )
+                root.quit()
+        
+        # Delay main app setup to show splash screen
+        root.after(3000, main_app_setup)  # Reduced from 8000ms to 3000ms
+        
+        # Start the application
+        root.mainloop()
+        
+        logger.info("Application shutdown complete")
+        
+    except Exception as e:
+        logger.critical(f"Critical error during application startup: {e}", exc_info=True)
+        try:
+            messagebox.showerror(
+                "Critical Error", 
+                f"Failed to start GitHub Repo Checker:\n{e}\n\nCheck the log file for details."
+            )
+        except:
+            print(f"Critical error: {e}")
+        return 1
+    
+    return 0
+
+
 if __name__ == "__main__":
-    root = tk.Tk()
-    root.withdraw()
-    splash = SplashScreen(root)
-    def main_app_setup():
-        splash.close()
-        root.deiconify()
-        GitHubRepoChecker(root)
-    root.after(8000, main_app_setup)
-    root.mainloop()
+    exit_code = main()
+    exit(exit_code)
